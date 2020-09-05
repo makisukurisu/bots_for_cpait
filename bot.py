@@ -21,8 +21,14 @@ chat_id = "ID" #Айди чата - можно взять у @combot (реком
 def send_all(table = "today", chat_id = chat_id): #отправить за *указать день*
 	
 	if table in ['today', 'tomorrow']:
-		c.execute("select name from {}".format(table))
-		all_resp = c.fetchall()
+		try:
+			c.execute("select name from {}".format(table))
+			all_resp = c.fetchall()
+		except sqlite3.OperationalError:
+			print('Виталик, база пустая, придумай тут что-то')
+			logging.error('Пустая база')
+			return
+
 	else:
 		logging.error('send_all invalid table value ({})'.format(table))
 		return
