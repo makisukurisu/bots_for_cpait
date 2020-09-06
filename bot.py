@@ -12,8 +12,8 @@ bot = telebot.TeleBot("TOKEN") #Взять у @BotFather
 db = sqlite3.connect('base.db', check_same_thread=False) #База данных (можно сделать и на гуглдоксах, но зачем?)
 c = db.cursor()
 
-c.execute("create table if not exists today (name str)")
-c.execute("create table if not exists tomorrow (name str)") #Если нет таблиц, то будут
+c.execute("create table if not exists today (str name)")
+c.execute("create table if not exists tomorrow (str name)") #Если нет таблиц, то будут
 db.commit()
 
 chat_id = "ID" #Айди чата - можно взять у @combot (рекомендую использовать), когда зайдёте в панель, в ссылке будет длинное число с минусом, или без, вставляете его в кавычки
@@ -26,7 +26,7 @@ def send_all(table = "today", chat_id = chat_id): #отправить за *ук
 			all_resp = c.fetchall()
 		except sqlite3.OperationalError:
 			print('Виталик, база пустая, придумай тут что-то')
-			logging.error('empty base (remove and start all over)')
+			logging.error('Пустая база')
 			return
 
 	else:
@@ -83,7 +83,7 @@ def upd_tm_rec(message): ###Если не написать сразу задан
 				c.execute("insert into tomorrow (name) values ('{}')".format(x))
 			db.commit()
 	else:
-		bot.reply_to(message, 'Что-то не то ты мне пишешь, ещё разок!')
+			bot.reply_to(message, 'Что-то не то ты мне пишешь, ещё разок!')
 
 def swap(): ##Смена дней (завтра остаётся, сегодня = завтра)
 
