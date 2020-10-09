@@ -12,8 +12,9 @@ bot = telebot.TeleBot("TOKEN") #Взять у @BotFather
 db = sqlite3.connect('base.db', check_same_thread=False) #База данных (можно сделать и на гуглдоксах, но зачем?)
 c = db.cursor()
 
-c.execute("create table if not exists today (name str)")
-c.execute("create table if not exists tomorrow (name str)") #Если нет таблиц, то будут
+c.execute('CREATE TABLE if not exists "tomorrow" ("pair_n"	int NOT NULL, CONSTRAINT "td_ref" FOREIGN KEY("pair_n") REFERENCES tasks)')
+c.execute('CREATE TABLE if not exists "today" ("pair_n"	int NOT NULL, CONSTRAINT "td_ref" FOREIGN KEY("pair_n") REFERENCES tasks)')
+c.execute('CREATE TABLE if not exists "tasks" ("pair_n"	INTEGER NOT NULL UNIQUE,"pair_name"	str NOT NULL,"task"	str NOT NULL,PRIMARY KEY("pair_n" AUTOINCREMENT))') #Если нет таблиц, то будут
 db.commit()
 
 chat_id = "ID" #Айди чата - можно взять у @combot (рекомендую использовать), когда зайдёте в панель, в ссылке будет длинное число с минусом, или без, вставляете его в кавычки
@@ -22,13 +23,15 @@ def send_all(table = "today", chat_id = chat_id): #отправить за *ук
 	
 	if table in ['today', 'tomorrow']:
 		try:
-			c.execute("select name from {}".format(table))
-			all_resp = c.fetchall()
-		except sqlite3.OperationalError:
-			print('Виталик, база пустая, придумай тут что-то')
-			logging.error('Empty base (start all over)')
+			c.execute("select * from tasks where pair_n in {}".format(table))
+			tasks = c.fetchall()
+			c.execute("select * from {}".format(table))
+			temp = c.fetchall()
+			tasks = [x for _, x in sorted(zip(temp, tasks), key=lambda pair: pair[0])]
+			print(tasks)
+		except Exception as E:
+			logging.error('Empty base (start all over?) ({})'.format(E))
 			return
-
 	else:
 		logging.error('send_all invalid table value ({})'.format(table))
 		return
@@ -37,8 +40,8 @@ def send_all(table = "today", chat_id = chat_id): #отправить за *ук
 		msg = 'Расписание на сегодня\n'
 	else:
 		msg = 'Расписание на завтра\n'
-	for x in all_resp:
-		msg += "\n{}. <b>{}</b>".format(all_resp.index(x)+1, ''.join(c for c in x if c not in "(',)" )) #пример использования парс мода (смотри дальше)
+	for x in range(len(tasks)):
+		msg += "\n{}. <b>{}</b> - {}".format(x+1, tasks[x][1], tasks[x][2]) #пример использования парс мода (смотри дальше)
 
 	bot.send_message(chat_id, msg, parse_mode = "HTML") #или MARKDOWN, что удобнее
 
@@ -54,7 +57,7 @@ def req_tom(message):
 
 	if message.text.lower() == 'всё завтра':
 
-		send_all('tomorrow', message.chat.id) #Вообще можно что угодно писать, но так красивее :)
+		send_all('tomorrow', message.chat.id)
 
 @bot.message_handler(commands = ['upd_tm'])
 def upd_tm(message):
@@ -65,10 +68,22 @@ def upd_tm(message):
 	else:
 		if len(message.text.split('\n')) == 5:
 			a = message.text.split('\n')[1:5]
-			print(a)
 			c.execute("delete from tomorrow")
+			c.execute("select pair_n, pair_name from tasks")
+			res = c.fetchall()
 			for x in a:
-				c.execute("insert into tomorrow (name) values ('{}')".format(x))
+				try:
+					for z in range(len(res)):
+						if x == res[z][1]:
+							c.execute("insert into tomorrow (pair_n) values ('{}')".format(res[z][0]))
+							raise(SyntaxError)
+				except SyntaxError:
+					continue
+				try:
+					c.execute("insert into tasks (pair_name, task) values ('{}', 'None')".format(x))
+					c.execute("insert into tomorrow (pair_n) values ((select pair_n from tasks where pair_name = '{}'))".format(x))
+				except Exception as E:
+					print(E)
 			db.commit()
 		else:
 			bot.reply_to(message, 'Что-то не то ты мне пишешь, ещё разок!')
@@ -76,12 +91,24 @@ def upd_tm(message):
 def upd_tm_rec(message): ###Если не написать сразу задания, то это - продолжение
 
 	if len(message.text.split('\n')) == 4:
-			a = message.text.split('\n')
-			print(a)
-			c.execute("delete from tomorrow")
-			for x in a:
-				c.execute("insert into tomorrow (name) values ('{}')".format(x))
-			db.commit()
+		a = message.text.split('\n')
+		c.execute("delete from tomorrow")
+		c.execute("select pair_n, pair_name from tasks")
+		res = c.fetchall()
+		for x in a:
+			try:
+				for z in range(len(res)):
+					if x == res[z][1]:
+						c.execute("insert into tomorrow (pair_n) values ('{}')".format(res[z][0]))
+						raise(SyntaxError)
+			except SyntaxError:
+				continue
+			try:
+				c.execute("insert into tasks (pair_name, task) values ('{}', 'None')".format(x))
+				c.execute("insert into tomorrow (pair_n) values ((select pair_n from tasks where pair_name = '{}'))".format(x))
+			except Exception as E:
+				print(E)
+		db.commit()
 	else:
 		bot.reply_to(message, 'Что-то не то ты мне пишешь, ещё разок!')
 
