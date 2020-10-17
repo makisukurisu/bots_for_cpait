@@ -3,8 +3,9 @@ import telebot
 import datetime
 import time
 import schedule
-from threading import Thread
 import logging
+from threading import Thread
+from telebot import types
 
 logging.basicConfig(filename='app.log', filemode='w', format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
@@ -18,6 +19,15 @@ c.execute('CREATE TABLE if not exists "tasks" ("pair_n"	INTEGER NOT NULL UNIQUE,
 db.commit()
 
 chat_id = "ID" #Айди чата - можно взять у @combot (рекомендую использовать), когда зайдёте в панель, в ссылке будет длинное число с минусом, или без, вставляете его в кавычки
+
+def swap(): ##Смена дней (завтра остаётся, сегодня = завтра)
+
+	c.execute("select * from tomorrow")
+	tom = c.fetchall()
+	c.execute("delete from today")
+	for x in tom:
+		c.execute("insert into today ('name') values ('{}')".format(''.join(c for c in x if c not in "(',)" )))
+	db.commit()
 
 def send_all(table = "today", chat_id = chat_id): #отправить за *указать день*
 	
@@ -44,6 +54,26 @@ def send_all(table = "today", chat_id = chat_id): #отправить за *ук
 		msg += "\n{}. <b>{}</b> - {}".format(x+1, tasks[x][1], tasks[x][2]) #пример использования парс мода (смотри дальше)
 
 	bot.send_message(chat_id, msg, parse_mode = "HTML") #или MARKDOWN, что удобнее
+
+def remind_upd_tasks():
+	
+	if datetime.datetime.today.weekday() != 5:
+		return
+
+	c.execute('select pair_name, pair_n from tasks where tasks.pair_n in (select * from today)')
+	pairs_td = c.fetchall()
+	msg = "Заполните дз за сегодняшние пары:\n"
+
+	for x in range(len(pairs_td)):
+
+		msg += "\n{}) {}".format(x+1, pairs_td[x][0])
+	
+	msg += "\n\nКак готов - тыкай на кнопку внизу кнопку внизу"
+
+	markup = types.InlineKeyboardMarkup()
+	markup.add(types.InlineKeyboardButton("Сейчас обновлю!", callback_data = 'upd_dz'))
+	
+	bot.send_message(chat_id, msg, reply_markup = markup) 
 
 @bot.message_handler(regexp = 'Всё сегодня')
 def req_td(message):
@@ -112,14 +142,37 @@ def upd_tm_rec(message): ###Если не написать сразу задан
 	else:
 		bot.reply_to(message, 'Что-то не то ты мне пишешь, ещё разок!')
 
-def swap(): ##Смена дней (завтра остаётся, сегодня = завтра)
+@bot.message_handler(regexp = '/upd_dz')
+def upd_dz_handle(message):
 
-	c.execute("select * from tomorrow")
-	tom = c.fetchall()
-	c.execute("delete from today")
-	for x in tom:
-		c.execute("insert into today ('name') values ('{}')".format(''.join(c for c in x if c not in "(',)" )))
-	db.commit()
+	bot.send_message(message.chat.id, message.text.split('/upd_dz_')[1])
+
+def upd_now_get_dz(message):
+
+	if len(message.text.split('\n')) == 4:
+
+		c.execute("select * from today")
+		all_nums = c.fetchall()
+		for x in range(len(all_nums)):
+			c.execute("update tasks set task = '{}' where pair_n = {}".format(message.text.split('\n')[x], all_nums[x][0]))
+			db.commit()
+		bot.send_message(message.chat.id, message.text)
+
+	else:
+		bot.send_message(message.chat.id, 'Мне чего-то не хватает, или чего-то слишком много...\n\nОтветь ещё раз на то сообщение.')
+
+@bot.callback_query_handler(func=lambda call: True)
+def handler_call(call):
+
+	message = call.message
+	data = call.data.split(';')
+
+	if data[0] == 'upd_dz':
+
+		a = bot.send_message(message.chat.id, 'Тогда напиши мне дз по предметам по порядку:\n\nДЗ_1\nДЗ_2\nДЗ_3\nДЗ_4\nИ так далее. Ответить надо на это сообщение!')
+		bot.register_for_reply(a, upd_now_get_dz)
+		bot.answer_callback_query(call.id, 'Акей!')
+
 
 
 class MTread(Thread):
@@ -131,6 +184,7 @@ class MTread(Thread):
 		schedule.every().day.at("06:50").do(send_all, 'today') ##Второе значение - аргументы, третье - кварги
 		schedule.every().day.at("17:30").do(send_all, 'tomorrow')
 		schedule.every().day.at("23:59").do(swap)
+		schedule.every().day.at("16:00").do(remind_upd_tasks)
 		while True:
 			schedule.run_pending()
 			time.sleep(1)
