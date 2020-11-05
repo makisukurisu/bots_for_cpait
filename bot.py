@@ -38,7 +38,6 @@ def send_all(table = "today", chat_id = chat_id): #отправить за *ук
 			c.execute("select * from {}".format(table))
 			temp = c.fetchall()
 			tasks = [x for _, x in sorted(zip(temp, tasks), key=lambda pair: pair[0])]
-			print(tasks)
 		except Exception as E:
 			logging.error('Empty base (start all over?) ({})'.format(E))
 			return
@@ -142,10 +141,27 @@ def upd_tm_rec(message): ###Если не написать сразу задан
 	else:
 		bot.reply_to(message, 'Что-то не то ты мне пишешь, ещё разок!')
 
-@bot.message_handler(regexp = '/upd_dz')
+@bot.message_handler(regexp = '/upd_')
 def upd_dz_handle(message):
+	if message.text == '/upd_dz':
+		c.execute('select pair_n, pair_name from tasks')
+		a = c.fetchall()
+		pari_numed = []
+		for x in a:
+			pari_numed.append("{}. {} - /upd_{} Задание".format(x[0], x[1], x[0]))
+		pari_numed = "\n".join(pari_numed)
+		bot.send_message(message.chat.id, 'Доступны такие пары:\n{}'.format(pari_numed))
+	else:
+		c.execute('select pair_n from tasks')
+		splt_msg = message.text.replace('/upd_', '').split(' ')
+		a = c.fetchall()
+		a = [x[0] for x in a]
 
-	bot.send_message(message.chat.id, message.text.split('/upd_dz_')[1])
+		if int(splt_msg[0]) in a:
+			c.execute('update tasks set task = "{}" where pair_n = {}'.format(splt_msg[1], splt_msg[0]))
+			bot.send_message(message.chat.id, 'Задание обновил!')
+		else:
+			bot.send_message(message.chat.id, 'Не могу найти такой предмет, попробуйте использовать /upd_dz снова.')
 
 def upd_now_get_dz(message):
 
@@ -180,7 +196,6 @@ class MTread(Thread):
 		Thread.__init__(self)
 		self.name = name
 	def run(self):
-		print(datetime.datetime.today().weekday())
 		schedule.every().day.at("06:50").do(send_all, 'today') ##Второе значение - аргументы, третье - кварги
 		schedule.every().day.at("17:30").do(send_all, 'tomorrow')
 		schedule.every().day.at("23:59").do(swap)
